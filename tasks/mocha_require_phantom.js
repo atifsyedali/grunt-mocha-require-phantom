@@ -29,6 +29,7 @@ module.exports = function(grunt) {
 		var options = this.options({
 				base: '',
 				main: 'test-bootstrap',
+				setup: '',
 				requireLib: 'require.js',
                 files: [],
 				port: 3000,
@@ -57,12 +58,12 @@ module.exports = function(grunt) {
 		var basePath = options.base,
 			main = basePath + '/' + options.main,
 			requireLib = basePath + '/' + options.requireLib,
-			scriptRef = '<scr'+'ipt data-main="/' + main + '" src="/' + requireLib + '"></scr'+'ipt>';
+			setup = basePath + '/' + options.setup,
+			scriptRef = '<scr'+'ipt data-main="/' + main + '" src="/' + requireLib + '"></scr'+'ipt>' + '<scr'+'ipt src="/' + setup + '"></scr'+'ipt>';
 
 
 		function launchServer(){
 			server.use(express.static(path.resolve('.')));
-
 			var regex = new RegExp('/' + basePath + '/[.]*');
 
 			server.get(regex, function(req, res){
@@ -77,11 +78,32 @@ module.exports = function(grunt) {
 			});
 
 			server.listen(options.port);
+		}		
+		
+		function launchServerKeepAliveMode(){
+			server.use(express.static(path.resolve('.')));
+			server.get('/**', function(req, res){
+				if(req.url.indexOf('.') === -1){
+					var file = req.url;
+					if (file.indexOf(options.basePathForTests) == -1) {
+						file = options.basePathForTests + file + '.js';
+					}
+					
+					copyFiles();
+					writeBootstrap(file);				
+					res.end(grunt.file.read(tempDirectory + '/index.html', {
+						encoding: 'utf8'
+					}));
+				}
+			});
+
+			server.listen(options.port);
+			
+			grunt.log.writeln('\n\nGo to http://localhost:' + options.port + '/{pathToTest} to debug your test in the web browser. For example, go to http://localhost:' + options.port + '/example/example1');
 		}
 
 		function writeBootstrap(file){
-			var scriptInc = 'var testPathname = "' + file.replace('.js', '') + '";';
-
+			var scriptInc = 'var testPathname = "/' + file + '";';
 			grunt.file.write(tempDirectory + '/include.js', scriptInc + '\ndocument.write(\'' + scriptRef + '\');', {
 				encoding: 'utf8'
 			});
@@ -205,11 +227,13 @@ module.exports = function(grunt) {
 		}
 
 		if(files.length){
-			launchServer();
 			if(!options.keepAlive){
+				launchServer();
 				copyFiles();
 				bindPhantomListeners();
 				spawn();
+			} else {
+				launchServerKeepAliveMode();
 			}
 		}
 		else{
@@ -219,4 +243,3 @@ module.exports = function(grunt) {
 	});
 
 };
-
