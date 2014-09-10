@@ -96,7 +96,9 @@ module.exports = function(grunt) {
 
 			server.listen(options.port);
 			
-			grunt.log.writeln('\n\nGo to http://localhost:' + options.port + '/{pathToTest} to debug your test in the web browser. For example, go to http://localhost:' + options.port + '/example/example1');
+			if (options.keepAlive) {
+				grunt.log.writeln('\n\nGo to http://localhost:' + options.port + '/{pathToTest} to debug your test in the web browser. For example, go to http://localhost:' + options.port + '/example/example1');
+			}
 		}
 
 		function writeBootstrap(file){
