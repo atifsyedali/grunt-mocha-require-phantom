@@ -60,27 +60,8 @@ module.exports = function(grunt) {
 			requireLib = basePath + '/' + options.requireLib,
 			setup = basePath + '/' + options.setup,
 			scriptRef = '<scr'+'ipt data-main="/' + main + '" src="/' + requireLib + '"></scr'+'ipt>' + '<scr'+'ipt src="/' + setup + '"></scr'+'ipt>';
-
-
-		function launchServer(){
-			server.use(express.static(path.resolve('.')));
-			var regex = new RegExp('/' + basePath + '/[.]*');
-
-			server.get(regex, function(req, res){
-				var url = req.url.substr(1);
-				if(url.indexOf('.') === -1){
-					copyFiles();
-					writeBootstrap(url);
-					res.end(grunt.file.read(tempDirectory + '/index.html', {
-						encoding: 'utf8'
-					}));
-				}
-			});
-
-			server.listen(options.port);
-		}		
 		
-		function launchServerKeepAliveMode(){
+		function launchServer(){
 			server.use(express.static(path.resolve('.')));
 			server.get('/**', function(req, res){
 				
@@ -249,7 +230,7 @@ module.exports = function(grunt) {
 				bindPhantomListeners();
 				spawn();
 			} else {
-				launchServerKeepAliveMode();
+				launchServer();
 			}
 		}
 		else{
