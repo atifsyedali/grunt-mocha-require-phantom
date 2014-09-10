@@ -83,7 +83,23 @@ module.exports = function(grunt) {
 		function launchServerKeepAliveMode(){
 			server.use(express.static(path.resolve('.')));
 			server.get('/**', function(req, res){
-				if(req.url.indexOf('.') === -1){
+				
+				if (req.url.indexOf(options.basePathForTests) >= 0) {
+					var url = req.url;
+					if (req.url.lastIndexOf('.') < req.url.lastIndexOf('/')) {
+						url += '.js';
+					}
+					
+					if (url.charAt(0) === '/') {
+						url = url.substring(1, url.length);
+					}
+					
+					res.end(grunt.file.read(url, {
+						encoding: 'utf8'
+					}));
+				} else if(req.url.indexOf('.') === -1 || req.url.lastIndexOf('.') < req.url.lastIndexOf('/')){
+					// the second condition takes care of relative paths like ../test.js vs ../test
+					
 					var file = req.url;
 					if (file.indexOf(options.basePathForTests) == -1) {
 						file = options.basePathForTests + file + '.js';
