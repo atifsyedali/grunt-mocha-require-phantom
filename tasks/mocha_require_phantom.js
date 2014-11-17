@@ -34,12 +34,13 @@ module.exports = function(grunt) {
                 files: [],
 				port: 3000,
 				keepAlive: false,
-			}),
-			tempDirectory = 'tmp',
+			});
+		var tempDirectory = options.tmpDir || 'tmp',
 			done = this.async(),
 			files = [],
 			count = 0,
 			errorCount = 0,
+			totalErrorCount = 0,
 			passCount = 0,
 			suiteLevel = 0;
 
@@ -88,7 +89,7 @@ module.exports = function(grunt) {
 										encoding: 'utf8'
 									}));
 								} else {
-									res.status(404).end();
+									return404(req, res);
 								}
 							});
 						} else if(req.url.indexOf('.') === -1 || req.url.lastIndexOf('.') < req.url.lastIndexOf('/')){
@@ -109,11 +110,11 @@ module.exports = function(grunt) {
 										});				
 									});
 								} else {
-									res.status(404).end();
+									return404(req, res);
 								}
 							});
 						} else {
-							res.status(404).end();
+							return404(req, res);
 						}
 					}
 				});
@@ -126,6 +127,11 @@ module.exports = function(grunt) {
 			if (options.keepAlive) {
 				grunt.log.writeln('\n\nGo to http://localhost:' + options.port + '/{pathToTest} to debug your test in the web browser. For example, go to http://localhost:' + options.port + '/example/example1');
 			}
+		}
+		
+		function return404(req, res) {
+			grunt.log.writeln('\nError (404): Could not serve request :' + req.url);
+			res.status(404).end();
 		}
 
 		function writeBootstrap(file, success){
@@ -148,14 +154,14 @@ module.exports = function(grunt) {
 						count++;
 
 						if(count === files.length){
-							if(errorCount > 0){
-								grunt.fail.warn(errorCount + ' tests failed');
+							if(totalErrorCount > 0){
+								grunt.fail.warn(totalErrorCount + ' tests failed');
 							}
 							clean();
 
 							//will keep server running forever - good times!
 							if(!options.keepAlive){
-								done(err || errorCount === 0);
+								done(err || totalErrorCount === 0);
 							}
 						}
 						else{
@@ -180,11 +186,13 @@ module.exports = function(grunt) {
 						suiteLevel++;
 					}
 					passCount = 0;
+					errorCount = 0;
 				}
 				else if(evt === 'fail'){
 					writeIndented(msg.title.error, suiteLevel);
-					writeIndented(msg.err.message.warn, suiteLevel);
+					writeIndented('>> Error: '.warn + msg.err.message.warn, suiteLevel);
 					errorCount++;
+					totalErrorCount++;
 				}
 				else if(evt === 'pass'){
 					writeIndented(msg.title.data, suiteLevel);
@@ -192,7 +200,11 @@ module.exports = function(grunt) {
 				}
 				else if(evt === 'suite end'){
 					if(msg.title){
-						writeIndented(passCount + ' passed'.info, --suiteLevel);
+						var resultMsg = passCount + ' passed'.info;
+						if (errorCount > 0) {
+							resultMsg += ', ' + errorCount + ' failed'.warn;
+						}
+						writeIndented(resultMsg, --suiteLevel);
 					}
 				}
 				else if (evt === 'end'){
@@ -263,11 +275,15 @@ module.exports = function(grunt) {
 			
 			var writeIndex = function(err, data) {
 				if (err) throw err;
+				data = data.replace(/\/tmp\//g, '/' + tempDirectory + '/');
 				fs.writeFile(tempDirectory + '/index.html', data, readMochaCss);
 			};
 			
 			var readIndex = function() {
-				fs.readFile(__dirname + '/../lib/index.html', writeIndex);
+				// by default, fs reads with utf-8. The absence of the parameter though means that contents
+				// will be returned as Buffer and not string. We want string contents so that we can replace 
+				// the temporary directory path to one that is possibly supplied to us through options.
+				fs.readFile(__dirname + '/../lib/index.html', "utf-8", writeIndex);
 			};
 			
 			var createDir = function() {
