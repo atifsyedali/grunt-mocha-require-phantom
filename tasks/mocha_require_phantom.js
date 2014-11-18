@@ -130,7 +130,9 @@ module.exports = function(grunt) {
 		}
 		
 		function return404(req, res) {
-			grunt.log.writeln('\nError (404): Could not serve request :' + req.url);
+			if (options.keepAlive) {
+				grunt.log.writeln('\nError (404): Could not serve request :' + req.url);
+			}
 			res.status(404).end();
 		}
 
