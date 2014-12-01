@@ -34,12 +34,13 @@ module.exports = function(grunt) {
                 files: [],
 				port: 3000,
 				keepAlive: false,
-			}),
-			tempDirectory = 'tmp',
+			});
+		var tempDirectory = options.tmpDir || 'tmp',
 			done = this.async(),
 			files = [],
 			count = 0,
 			errorCount = 0,
+			totalErrorCount = 0,
 			passCount = 0,
 			suiteLevel = 0;
 
@@ -64,38 +65,61 @@ module.exports = function(grunt) {
 		function launchServer(){
 			server.use(express.static(path.resolve('.')));
 			server.get('/**', function(req, res){
-				var fileLoc= null;
-				if (req.url.indexOf(options.basePathForTests) >= 0) {
-					var url = req.url;
-					if (req.url.lastIndexOf('.') < req.url.lastIndexOf('/')) {
-						url += '.js';
-					}
-					
-					if (url.charAt(0) === '/') {
-						url = url.substring(1, url.length);
-					}
-					fileLoc= url;
-				} else if(req.url.indexOf('.') === -1 || req.url.lastIndexOf('.') < req.url.lastIndexOf('/')){
-					// the second condition takes care of relative paths like ../test.js vs ../test
-					
-					var file = req.url;
-					if (file.indexOf(options.basePathForTests) == -1) {
-						file = options.basePathForTests + file + '.js';
-					}
-
-					copyFiles();
-					writeBootstrap(file);	
-					fileLoc= tempDirectory + '/index.html';
-				}
 				
-				if (fileLoc == null || !grunt.file.exists(fileLoc)) {
-					res.status(404).end();
-					return;
-				}
+				var file = options.basePathForTests + req.url;
+				fs.exists(file, function(exists) {						
+					if (exists) {
+						res.end(grunt.file.read(file, {
+							encoding: 'utf8'
+						}));
+					} else {
+						if (req.url.indexOf(options.basePathForTests) >= 0) {
+							var url = req.url;
+							if (req.url.lastIndexOf('.') < req.url.lastIndexOf('/')) {
+								url += '.js';
+							}
+							
+							if (url.charAt(0) === '/') {
+								url = url.substring(1, url.length);
+							}
+							
+							fs.exists(url, function(exists) {						
+								if (exists) {
+									res.end(grunt.file.read(url, {
+										encoding: 'utf8'
+									}));
+								} else {
+									return404(req, res);
+								}
+							});
+						} else if(req.url.indexOf('.') === -1 || req.url.lastIndexOf('.') < req.url.lastIndexOf('/')){
+							// the second condition takes care of relative paths like ../test.js vs ../test
+							
+							file = req.url;
+							if (file.indexOf(options.basePathForTests) == -1) {
+								file = options.basePathForTests + file + '.js';
+							}
+							
+							fs.exists(file, function(exists) {						
+								if (exists) {
+									copyFiles(function() {
+										writeBootstrap(file, function() {
+											res.end(grunt.file.read(tempDirectory + '/index.html', {
+												encoding: 'utf8'
+											}));
+										});				
+									});
+								} else {
+									return404(req, res);
+								}
+							});
+						} else {
+							return404(req, res);
+						}
+					}
+				});
+					
 				
-				res.end(grunt.file.read(fileLoc, {
-						encoding: 'utf8'
-				}));
 			});
 
 			server.listen(options.port);
@@ -104,12 +128,19 @@ module.exports = function(grunt) {
 				grunt.log.writeln('\n\nGo to http://localhost:' + options.port + '/{pathToTest} to debug your test in the web browser. For example, go to http://localhost:' + options.port + '/example/example1');
 			}
 		}
+		
+		function return404(req, res) {
+			if (options.keepAlive) {
+				grunt.log.writeln('\nError (404): Could not serve request :' + req.url);
+			}
+			res.status(404).end();
+		}
 
-		function writeBootstrap(file){
+		function writeBootstrap(file, success){
 			var scriptInc = 'var testPathname = "/' + file + '";';
-			grunt.file.write(tempDirectory + '/include.js', scriptInc + '\ndocument.write(\'' + scriptRef + '\');', {
+			fs.writeFile(tempDirectory + '/include.js', scriptInc + '\ndocument.write(\'' + scriptRef + '\');', {
 				encoding: 'utf8'
-			});
+			}, success);
 		}
 
 		function spawn(){
@@ -117,28 +148,29 @@ module.exports = function(grunt) {
 
 			grunt.log.writeln('\n\nTesting: ' + file);
 
-			writeBootstrap(file);
+			writeBootstrap(file, function() {
 
-			phantomjs.spawn('http://localhost:' + options.port + '/' + tempDirectory + '/index.html', {
-				options: {},
-				done: function(err) {
-					count++;
+				phantomjs.spawn('http://localhost:' + options.port + '/' + tempDirectory + '/index.html', {
+					options: {},
+					done: function(err) {
+						count++;
 
-					if(count === files.length){
-						if(errorCount > 0){
-							grunt.fail.warn(errorCount + ' tests failed');
+						if(count === files.length){
+							if(totalErrorCount > 0){
+								grunt.fail.warn(totalErrorCount + ' tests failed');
+							}
+							clean();
+
+							//will keep server running forever - good times!
+							if(!options.keepAlive){
+								done(err || totalErrorCount === 0);
+							}
 						}
-						clean();
-
-						//will keep server running forever - good times!
-						if(!options.keepAlive){
-							done(err || errorCount === 0);
+						else{
+							spawn();
 						}
 					}
-					else{
-						spawn();
-					}
-				}
+				});
 			});
 
 		}
@@ -156,11 +188,13 @@ module.exports = function(grunt) {
 						suiteLevel++;
 					}
 					passCount = 0;
+					errorCount = 0;
 				}
 				else if(evt === 'fail'){
 					writeIndented(msg.title.error, suiteLevel);
-					writeIndented(msg.err.message.warn, suiteLevel);
+					writeIndented('>> Error: '.warn + msg.err.message.warn, suiteLevel);
 					errorCount++;
+					totalErrorCount++;
 				}
 				else if(evt === 'pass'){
 					writeIndented(msg.title.data, suiteLevel);
@@ -168,7 +202,11 @@ module.exports = function(grunt) {
 				}
 				else if(evt === 'suite end'){
 					if(msg.title){
-						writeIndented(passCount + ' passed'.info, --suiteLevel);
+						var resultMsg = passCount + ' passed'.info;
+						if (errorCount > 0) {
+							resultMsg += ', ' + errorCount + ' failed'.warn;
+						}
+						writeIndented(resultMsg, --suiteLevel);
 					}
 				}
 				else if (evt === 'end'){
@@ -209,32 +247,61 @@ module.exports = function(grunt) {
 			grunt.log.writeln(tab + msg);
 		}
 
-		function copyFiles(){
-			var html = fs.readFileSync(__dirname + '/../lib/index.html', 'utf8'),
-				mochaJS = fs.readFileSync(__dirname + '/../node_modules/mocha/mocha.js', 'utf8'),
-				mochaCSS = fs.readFileSync(__dirname + '/../node_modules/mocha/mocha.css', 'utf8'),
-				bridge = fs.readFileSync(__dirname + '/../lib/bridge.js', 'utf8');
-
-			grunt.file.write(tempDirectory + '/index.html', html, {
-				encoding: 'utf8'
-			});
-			grunt.file.write(tempDirectory + '/mocha.css', mochaCSS, {
-				encoding: 'utf8'
-			});
-			grunt.file.write(tempDirectory + '/mocha.js', mochaJS, {
-				encoding: 'utf8'
-			});
-			grunt.file.write(tempDirectory + '/bridge.js', bridge, {
-				encoding: 'utf8'
-			});
+		function copyFiles(success){			
+			var writeBridgeJs = function(err, data) {
+				if (err) throw err;
+				fs.writeFile(tempDirectory + '/bridge.js', data, success);
+			};
+			
+			var readBridge = function() {
+				fs.readFile(__dirname + '/../lib/bridge.js', writeBridgeJs);
+			};
+			
+			var writeMochaJs = function(err, data) {
+				if (err) throw err;
+				fs.writeFile(tempDirectory + '/mocha.js', data, readBridge);
+			};
+			
+			var readMochaJs = function() {
+				fs.readFile(__dirname + '/../node_modules/mocha/mocha.js', writeMochaJs);
+			};
+			
+			var writeMochaCss = function(err, data) {
+				if (err) throw err;
+				fs.writeFile(tempDirectory + '/mocha.css', data, readMochaJs);
+			};
+			
+			var readMochaCss = function() {
+				fs.readFile(__dirname + '/../node_modules/mocha/mocha.css', writeMochaCss);
+			};
+			
+			var writeIndex = function(err, data) {
+				if (err) throw err;
+				data = data.replace(/\/tmp\//g, '/' + tempDirectory + '/');
+				fs.writeFile(tempDirectory + '/index.html', data, readMochaCss);
+			};
+			
+			var readIndex = function() {
+				// by default, fs reads with utf-8. The absence of the parameter though means that contents
+				// will be returned as Buffer and not string. We want string contents so that we can replace 
+				// the temporary directory path to one that is possibly supplied to us through options.
+				fs.readFile(__dirname + '/../lib/index.html', "utf-8", writeIndex);
+			};
+			
+			var createDir = function() {
+				fs.mkdir(tempDirectory, readIndex);
+			};
+			
+			fs.rmdir(tempDirectory, createDir);
 		}
 
 		if(files.length){
 			if(!options.keepAlive){
 				launchServer();
-				copyFiles();
-				bindPhantomListeners();
-				spawn();
+				copyFiles(function() {
+					bindPhantomListeners();
+					spawn();
+				});
 			} else {
 				launchServer();
 			}
