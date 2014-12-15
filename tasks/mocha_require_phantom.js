@@ -3,7 +3,6 @@
  * https://github.com/accordionpeas/grunt-mocha-require-phantom
  *
  */
-
 module.exports = function(grunt) {
 
 	'use strict';
@@ -12,6 +11,7 @@ module.exports = function(grunt) {
 		path = require('path'),
 		colors = require('colors'),
 		express = require('express'),
+		MochaJUnit= require("./mocha_junit"),
 		server = express(),
 		phantomjs = require('grunt-lib-phantomjs').init(grunt);
 
@@ -35,14 +35,15 @@ module.exports = function(grunt) {
 				port: 3000,
 				keepAlive: false,
 			});
-		var tempDirectory = options.tmpDir || 'tmp',
-			done = this.async(),
-			files = [],
-			count = 0,
-			errorCount = 0,
-			totalErrorCount = 0,
-			passCount = 0,
-			suiteLevel = 0;
+		var tempDirectory= options.tmpDir || 'tmp',
+			files= [],
+			count= 0,
+			finish= this.async(),
+			errorCount= 0,
+			totalErrorCount= 0,
+			passCount= 0,
+			suiteLevel= 0,
+			mochaJUnit= new MochaJUnit();
 
 		var cmdOptFiles = grunt.option('files');
 
@@ -233,9 +234,15 @@ module.exports = function(grunt) {
 				phantomjs.halt();
 				grunt.warn('PhantomJS timed out.');
 			});
+			mochaJUnit.bind(phantomjs);
+		}
+		
+		function done(result) {
+			mochaJUnit.save("out");
+			finish(result);
 		}
 
-		function clean(){
+		function clean() {
 			grunt.file.delete(tempDirectory);
 		}
 
