@@ -34,6 +34,7 @@ module.exports = function(grunt) {
                 files: [],
 				port: 3000,
 				keepAlive: false,
+				sandboxed: true,
 			});
 		var tempDirectory= options.tmpDir || 'tmp',
 			files= [],
@@ -57,6 +58,11 @@ module.exports = function(grunt) {
 			files = grunt.file.expand(options.base + '/' + options.files);
 		}
 
+		var launchedServer= null;
+		var queue= [];
+		for(var i= 0; i < files.length; i++) {
+			queue.push("/" + files[i]);
+		}
 		var basePath = options.base,
 			main = basePath + '/' + options.main,
 			requireLib = basePath + '/' + options.requireLib,
@@ -123,7 +129,7 @@ module.exports = function(grunt) {
 				
 			});
 
-			server.listen(options.port);
+			launchedServer= server.listen(options.port);
 			
 			if (options.keepAlive) {
 				grunt.log.writeln('\n\nGo to http://localhost:' + options.port + '/{pathToTest} to debug your test in the web browser. For example, go to http://localhost:' + options.port + '/example/example1');
@@ -138,16 +144,14 @@ module.exports = function(grunt) {
 		}
 
 		function writeBootstrap(file, success){
-			var scriptInc = 'var testPathname = "/' + file + '";';
+			var scriptInc = 'var testPathname = ' + JSON.stringify(file) + ';';
 			fs.writeFile(tempDirectory + '/include.js', scriptInc + '\ndocument.write(\'' + scriptRef + '\');', {
 				encoding: 'utf8'
 			}, success);
 		}
 
 		function spawn(){
-			var file = files[count];
-
-			grunt.log.writeln('\n\nTesting: ' + file);
+			var file = options.sandboxed ? queue.splice(0, 1) : queue.splice(0, queue.length);
 
 			writeBootstrap(file, function() {
 
@@ -156,7 +160,7 @@ module.exports = function(grunt) {
 					done: function(err) {
 						count++;
 
-						if(count === files.length){
+						if(queue.length == 0){
 							if(totalErrorCount > 0){
 								grunt.fail.warn(totalErrorCount + ' tests failed');
 							}
@@ -239,6 +243,8 @@ module.exports = function(grunt) {
 		
 		function done(result) {
 			mochaJUnit.save("out");
+			phantomjs.removeAllListeners();
+			launchedServer.close();
 			finish(result);
 		}
 
