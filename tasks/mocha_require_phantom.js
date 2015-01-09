@@ -110,7 +110,7 @@ module.exports = function(grunt) {
 							fs.exists(file, function(exists) {						
 								if (exists) {
 									copyFiles(function() {
-										writeBootstrap(file, function() {
+										writeBootstrap(["/" + file], function() {
 											res.end(grunt.file.read(tempDirectory + '/index.html', {
 												encoding: 'utf8'
 											}));
