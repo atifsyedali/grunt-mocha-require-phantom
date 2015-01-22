@@ -71,62 +71,75 @@ module.exports = function(grunt) {
 		
 		function launchServer(){
 			server.use(express.static(path.resolve('.')));
-			server.get('/**', function(req, res){
-				
+			server.get('/**', function(req, res) {
 				var file = options.basePathForTests + req.url;
-				fs.exists(file, function(exists) {						
-					if (exists) {
-						res.end(grunt.file.read(file, {
-							encoding: 'utf8'
-						}));
-					} else {
-						if (req.url.indexOf(options.basePathForTests) >= 0) {
-							var url = req.url;
-							if (req.url.lastIndexOf('.') < req.url.lastIndexOf('/')) {
-								url += '.js';
-							}
-							
-							if (url.charAt(0) === '/') {
-								url = url.substring(1, url.length);
-							}
-							
-							fs.exists(url, function(exists) {						
-								if (exists) {
-									res.end(grunt.file.read(url, {
+				if (fs.existsSync(file) && !fs.statSync(file).isDirectory()) {
+					res.end(grunt.file.read(file, {
+						encoding: 'utf8'
+					}));
+				} else if (fs.existsSync(file) && fs.statSync(file).isDirectory()) {
+					var tests= [];
+					// the second condition takes care of relative paths like ../test.js vs ../test
+					tests= files.filter(function(elem, index, array) {
+						var prefix= fs.realpathSync(options.basePathForTests + req.url);
+						var test= fs.realpathSync(elem);
+						return test.indexOf(prefix) == 0;
+					});
+					
+					tests= tests.map(function(file) { 
+						return "/" + file;
+					});
+					copyFiles(function() {
+						writeBootstrap(tests, function() {
+							res.end(grunt.file.read(tempDirectory + '/index.html', {
+								encoding: 'utf8'
+							}));
+						});				
+					});
+				} else if (req.url.indexOf(options.basePathForTests) >= 0) {
+					var url = req.url;
+					if (req.url.lastIndexOf('.') < req.url.lastIndexOf('/')) {
+						url += '.js';
+					}
+					
+					if (url.charAt(0) === '/') {
+						url = url.substring(1, url.length);
+					}
+					
+					fs.exists(url, function(exists) {						
+						if (exists) {
+							res.end(grunt.file.read(url, {
+								encoding: 'utf8'
+							}));
+						} else {
+							return404(req, res);
+						}
+					});
+				} else if(req.url.indexOf('.') === -1 || req.url.lastIndexOf('.') < req.url.lastIndexOf('/')){
+					// the second condition takes care of relative paths like ../test.js vs ../test
+					
+					file = req.url;
+					
+					if (file.indexOf(options.basePathForTests) == -1) {
+						file = options.basePathForTests + file + '.js';
+					}
+					
+					fs.exists(file, function(exists) {						
+						if (exists) {
+							copyFiles(function() {
+								writeBootstrap(["/" + file], function() {
+									res.end(grunt.file.read(tempDirectory + '/index.html', {
 										encoding: 'utf8'
 									}));
-								} else {
-									return404(req, res);
-								}
-							});
-						} else if(req.url.indexOf('.') === -1 || req.url.lastIndexOf('.') < req.url.lastIndexOf('/')){
-							// the second condition takes care of relative paths like ../test.js vs ../test
-							
-							file = req.url;
-							if (file.indexOf(options.basePathForTests) == -1) {
-								file = options.basePathForTests + file + '.js';
-							}
-							
-							fs.exists(file, function(exists) {						
-								if (exists) {
-									copyFiles(function() {
-										writeBootstrap(["/" + file], function() {
-											res.end(grunt.file.read(tempDirectory + '/index.html', {
-												encoding: 'utf8'
-											}));
-										});				
-									});
-								} else {
-									return404(req, res);
-								}
+								});				
 							});
 						} else {
 							return404(req, res);
 						}
-					}
-				});
-					
-				
+					});
+				} else {
+					return404(req, res);
+				}
 			});
 
 			launchedServer= server.listen(options.port);
