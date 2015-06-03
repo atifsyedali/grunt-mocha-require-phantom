@@ -27,6 +27,21 @@ XMLBuilder.prototype.tag= function(elementName, attributes, contentsFunc, noInde
 	this.out+= "<";
 	
 	this.out+= elementName;
+
+	// add missing attributes
+	switch (elementName) {
+	  case "testsuite":
+		if (!attributes.errors) {
+			attributes.errors = "0";
+		}
+		break;
+	  case "testcase":
+		if (!attributes.classname) {
+			attributes.classname = "undefined";
+		}
+		break;
+	}
+	
 	this.out+= attr(attributes);
 	if (contentsFunc != null) {
 		this.out+=">" + newLine;
@@ -56,6 +71,7 @@ XMLBuilder.prototype.toString= function() {
 
 function attr(attributes) {
 	var out= "";
+	debugger;
 	if (attributes != null) {
 		for (i in attributes) {
 			if (attributes[i] != null) {
