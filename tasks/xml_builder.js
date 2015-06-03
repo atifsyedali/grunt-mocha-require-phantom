@@ -71,7 +71,6 @@ XMLBuilder.prototype.toString= function() {
 
 function attr(attributes) {
 	var out= "";
-	debugger;
 	if (attributes != null) {
 		for (i in attributes) {
 			if (attributes[i] != null) {
